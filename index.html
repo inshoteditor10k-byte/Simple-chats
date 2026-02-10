@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>LocalChat</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+*{box-sizing:border-box;font-family:system-ui}
+body{margin:0;background:#0f172a;color:#fff}
+.screen{display:none;min-height:100vh;padding:16px}
+.screen.active{display:block}
+h1,h2{text-align:center;margin:10px 0}
+input,textarea{
+  width:100%;padding:12px;margin:6px 0;
+  border-radius:10px;border:none
+}
+button{
+  width:100%;padding:12px;margin-top:10px;
+  border-radius:12px;border:none;
+  background:#2563eb;color:#fff;font-weight:600
+}
+button.ghost{background:transparent;border:1px solid #2563eb}
+header{
+  display:flex;justify-content:space-between;
+  align-items:center;margin-bottom:10px
+}
+#refreshBtn{display:none;background:#dc2626}
+.page{display:none;padding-bottom:80px}
+.page.active{display:block}
+.userCard{
+  background:#1e293b;padding:12px;
+  border-radius:12px;margin-bottom:8px
+}
+nav{
+  position:fixed;bottom:0;left:0;width:100%;
+  display:flex;background:#020617
+}
+nav button{flex:1;background:none;border-radius:0}
+.chatBox{max-height:60vh;overflow-y:auto}
+.msg{
+  padding:8px 12px;border-radius:10px;
+  margin:6px 0;max-width:80%
+}
+.me{background:#2563eb;margin-left:auto}
+.other{background:#334155}
+small{opacity:.6}
+</style>
+</head>
+<body>
+
+<!-- AUTH HOME -->
+<section id="authHome" class="screen active">
+  <h1>LocalChat</h1>
+  <button onclick="showScreen('login')">Login Existing Account</button>
+  <button onclick="showScreen('signup')">Create New Account</button>
+</section>
+
+<!-- SIGNUP -->
+<section id="signup" class="screen">
+  <h2>Create Account</h2>
+  <input id="su_name" placeholder="Name">
+  <input id="su_username" placeholder="Unique Username">
+  <input id="su_email" placeholder="Email (optional)">
+  <input id="su_phone" placeholder="Phone Number">
+  <input id="su_pass" type="password" placeholder="Password">
+  <input id="su_cpass" type="password" placeholder="Confirm Password">
+  <button onclick="signup()">Create Account</button>
+  <button class="ghost" onclick="showScreen('authHome')">Back</button>
+</section>
+
+<!-- LOGIN -->
+<section id="login" class="screen">
+  <h2>Login</h2>
+  <input id="li_phone" placeholder="Phone Number">
+  <input id="li_pass" type="password" placeholder="Password">
+  <button onclick="login()">Login</button>
+  <button class="ghost" onclick="showScreen('authHome')">Back</button>
+</section>
+
+<!-- APP -->
+<section id="app" class="screen">
+  <header>
+    <b id="title">Suggestions</b>
+    <button id="refreshBtn" onclick="refreshApp()">🔴 <span id="changeCount"></span></button>
+  </header>
+
+  <div id="suggestions" class="page active"></div>
+  <div id="friends" class="page"></div>
+  <div id="requests" class="page"></div>
+  <div id="profile" class="page"></div>
+  <div id="chat" class="page"></div>
+
+  <nav>
+    <button onclick="openPage('suggestions')">Suggestions</button>
+    <button onclick="openPage('friends')">Friends</button>
+    <button onclick="openPage('requests')">Requests</button>
+    <button onclick="openPage('profile')">Profile</button>
+    <button onclick="openPage('chat')">Chat</button>
+  </nav>
+</section>
+
+<script>
+/* ---------- STORAGE ---------- */
+const LS={
+ users:JSON.parse(localStorage.getItem("users"))||[],
+ follows:JSON.parse(localStorage.getItem("follows"))||{},
+ chats:JSON.parse(localStorage.getItem("chats"))||{},
+ loggedIn:JSON.parse(localStorage.getItem("loggedInUser")),
+ changes:JSON.parse(localStorage.getItem("changes"))||0
+}
+const save=()=>{
+ localStorage.setItem("users",JSON.stringify(LS.users))
+ localStorage.setItem("follows",JSON.stringify(LS.follows))
+ localStorage.setItem("chats",JSON.stringify(LS.chats))
+ localStorage.setItem("loggedInUser",JSON.stringify(LS.loggedIn))
+ localStorage.setItem("changes",JSON.stringify(LS.changes))
+}
+
+/* ---------- UI ---------- */
+const showScreen=id=>{
+ document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"))
+ document.getElementById(id).classList.add("active")
+}
+const openPage=id=>{
+ document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"))
+ document.getElementById(id).classList.add("active")
+ title.innerText=id.charAt(0).toUpperCase()+id.slice(1)
+ render()
+}
+
+/* ---------- AUTH ---------- */
+function signup(){
+ if(su_pass.value!==su_cpass.value) return alert("Password mismatch")
+ if(LS.users.find(u=>u.username===su_username.value)) return alert("Username taken")
+ const u={
+  id:Date.now(),
+  name:su_name.value,
+  username:su_username.value,
+  email:su_email.value,
+  phone:su_phone.value,
+  pass:su_pass.value,
+  bio:"",
+  private:false,
+  code:"UC"+Math.random().toString(36).slice(2,8)
+ }
+ if(!u.name||!u.username||!u.phone||!u.pass) return alert("Fill required fields")
+ LS.users.push(u)
+ LS.loggedIn=u.id
+ LS.changes++
+ save();init()
+}
+
+function login(){
+ const u=LS.users.find(x=>x.phone===li_phone.value&&x.pass===li_pass.value)
+ if(!u) return alert("Invalid login")
+ LS.loggedIn=u.id
+ save();init()
+}
+
+/* ---------- RENDER ---------- */
+function render(){
+ renderSuggestions();renderFriends();renderRequests();renderProfile();renderChat()
+ refreshBtn.style.display=LS.changes?"block":"none"
+ changeCount.innerText=LS.changes||""
+}
+
+function renderSuggestions(){
+ suggestions.innerHTML=""
+ LS.users.filter(u=>u.id!==LS.loggedIn).forEach(u=>{
+  suggestions.innerHTML+=`
+  <div class="userCard">
+   <b>@${u.username}</b><br>
+   <button onclick="follow(${u.id})">Follow</button>
+  </div>`
+ })
+}
+
+function follow(id){
+ LS.follows[LS.loggedIn]=LS.follows[LS.loggedIn]||[]
+ if(!LS.follows[LS.loggedIn].includes(id)){
+  LS.follows[LS.loggedIn].push(id)
+  LS.changes++;save();render()
+ }
+}
+
+function renderFriends(){
+ friends.innerHTML=""
+ const me=LS.loggedIn
+ ;(LS.follows[me]||[]).forEach(fid=>{
+  if((LS.follows[fid]||[]).includes(me)){
+   const u=LS.users.find(x=>x.id===fid)
+   friends.innerHTML+=`
+   <div class="userCard" onclick="openChat(${fid})">
+    @${u.username}
+   </div>`
+  }
+ })
+}
+
+function renderRequests(){
+ requests.innerHTML=""
+ LS.users.forEach(u=>{
+  if((LS.follows[u.id]||[]).includes(LS.loggedIn) &&
+     !(LS.follows[LS.loggedIn]||[]).includes(u.id)){
+   requests.innerHTML+=`
+   <div class="userCard">
+    @${u.username}
+    <button onclick="follow(${u.id})">Follow Back</button>
+   </div>`
+  }
+ })
+}
+
+function renderProfile(){
+ const u=LS.users.find(x=>x.id===LS.loggedIn)
+ profile.innerHTML=`
+ <h2>@${u.username}</h2>
+ <textarea onchange="uBio(this.value)">${u.bio}</textarea>
+ <p>User Code: <b>${u.code}</b></p>
+ <button onclick="logout()">Logout</button>`
+}
+const uBio=v=>{
+ const u=LS.users.find(x=>x.id===LS.loggedIn)
+ u.bio=v;LS.changes++;save()
+}
+
+/* ---------- CHAT ---------- */
+let chatWith=null
+function openChat(id){
+ chatWith=id
+ openPage("chat")
+}
+function renderChat(){
+ if(!chatWith){chat.innerHTML="<p>Select a friend</p>";return}
+ const key=[LS.loggedIn,chatWith].sort().join("_")
+ LS.chats[key]=LS.chats[key]||[]
+ const u=LS.users.find(x=>x.id===chatWith)
+ chat.innerHTML=`
+ <h3>@${u.username}</h3>
+ <div class="chatBox">
+ ${LS.chats[key].map(m=>`
+  <div class="msg ${m.from===LS.loggedIn?'me':'other'}">${m.text}</div>`).join("")}
+ </div>
+ <input id="msgTxt" placeholder="Type message">
+ <button onclick="sendMsg('${key}')">Send</button>`
+}
+function sendMsg(key){
+ LS.chats[key].push({from:LS.loggedIn,text:msgTxt.value})
+ msgTxt.value=""
+ LS.changes++;save();renderChat()
+}
+
+/* ---------- REFRESH ---------- */
+function refreshApp(){LS.changes=0;save();render()}
+
+/* ---------- INIT ---------- */
+function init(){showScreen("app");openPage("suggestions")}
+function logout(){LS.loggedIn=null;save();showScreen("authHome")}
+if(LS.loggedIn) init()
+</script>
+</body>
+</html>
