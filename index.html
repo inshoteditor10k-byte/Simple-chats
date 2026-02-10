@@ -30,6 +30,7 @@
         .btn { border: none; padding: 10px 15px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         .btn-primary { background: var(--primary); color: white; }
         .btn-green { background: var(--green); color: white; }
+        .btn-red { background: var(--red); color: white; }
         .btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--primary); }
         input { padding: 12px; border: 1px solid var(--border); border-radius: 6px; width: 100%; font-size: 16px; outline: none; }
 
@@ -45,7 +46,8 @@
 
         /* Home */
         #home-screen { background: var(--bg); }
-        .top-bar { background: var(--white); padding: 10px; border-bottom: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); z-index: 10; }
+        .top-bar { background: var(--white); padding: 10px; border-bottom: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,0.05); z-index: 10; display: flex; gap: 10px; }
+        .top-bar input { flex: 1; }
         .tabs { display: flex; justify-content: space-around; background: var(--white); border-bottom: 1px solid var(--border); }
         .tab-btn { flex: 1; padding: 15px 0; background: none; border: none; font-weight: 600; color: var(--gray); cursor: pointer; border-bottom: 3px solid transparent; }
         .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
@@ -96,7 +98,9 @@
     <!-- HOME SCREEN -->
     <div id="home-screen" class="screen hidden">
         <div class="top-bar">
-            <input type="text" id="search-input" placeholder="Search by Name or Mobile..." onkeyup="app.handleSearch()">
+            <input type="text" id="search-input" placeholder="Search..." onkeyup="app.handleSearch()">
+            <!-- LOGOUT BUTTON ADDED -->
+            <button class="btn btn-red" style="padding: 5px 10px; font-size: 12px;" onclick="app.logout()">Logout</button>
         </div>
         <div class="tabs">
             <button class="tab-btn active" onclick="app.switchTab('suggestions')">Suggestions</button>
@@ -173,49 +177,46 @@
                 this.init();
             }
 
-            // Persistence: Check Cookies
+            // Persistence: Check LocalStorage first
             async init() {
-                // Anonymous auth to ensure DB connection permissions
+                // Anonymous auth
                 await auth.signInAnonymously().catch(console.error);
 
-                const mobile = this.getCookie("user_mobile");
-                if (mobile) {
-                    this.fetchUserProfile(mobile);
+                // CHECK LOCAL STORAGE FOR SAVED USER
+                const savedUser = localStorage.getItem("chat_user");
+                
+                if (savedUser) {
+                    const userData = JSON.parse(savedUser);
+                    // Direct login without showing login screen
+                    this.fetchUserProfile(userData.mobile);
                 }
-            }
-
-            getCookie(name) {
-                const value = `; ${document.cookie}`;
-                const parts = value.split(`; ${name}=`);
-                if (parts.length === 2) return parts.pop().split(';').shift();
-            }
-
-            setCookie(name, value, days) {
-                let expires = "";
-                if (days) {
-                    const date = new Date();
-                    date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-                    expires = "; expires=" + date.toUTCString();
-                }
-                document.cookie = name + "=" + (value || "") + expires + "; path=/";
             }
 
             // --- Login ---
             async login() {
                 const name = document.getElementById('login-name').value.trim();
-                const mobile = document.getElementById('login-mobile').value.trim().replace(/\D/g, ''); // Digits only
+                const mobile = document.getElementById('login-mobile').value.trim().replace(/\D/g, '');
 
                 if (!name || !mobile) return alert("Name and Mobile are required");
 
-                // Save/Update User in DB
-                await db.ref('users/' + mobile).set({
+                // Save to LocalStorage (Permanent Login)
+                localStorage.setItem("chat_user", JSON.stringify({ name: name, mobile: mobile }));
+
+                // Update User in DB (Use update instead of set to avoid wiping other data)
+                await db.ref('users/' + mobile).update({
                     name: name,
                     mobile: mobile,
                     last_seen: firebase.database.ServerValue.TIMESTAMP
                 });
 
-                this.setCookie("user_mobile", mobile, 3650); // 10 years persistence
                 this.fetchUserProfile(mobile);
+            }
+
+            // --- Logout ---
+            logout() {
+                // Remove data and reload
+                localStorage.removeItem("chat_user");
+                location.reload();
             }
 
             fetchUserProfile(mobile) {
@@ -227,22 +228,19 @@
                         this.startListeners();
                         this.renderList();
                     } else {
-                        // Cookie existed but DB data gone (rare)
-                        document.cookie = "user_mobile=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;";
-                        location.reload();
+                        // If data deleted from DB but exists in storage, reset
+                        this.logout();
                     }
                 });
             }
 
             // --- Home Logic ---
             startListeners() {
-                // Listen for all users
                 db.ref('users').on('value', snapshot => {
                     this.allUsers = snapshot.val() || {};
                     this.renderList();
                 });
 
-                // Listen for my relationships
                 db.ref(`relationships/${this.currentUser.mobile}`).on('value', snapshot => {
                     this.relationships = snapshot.val() || {};
                     this.renderList();
@@ -269,15 +267,13 @@
                 const users = Object.values(this.allUsers);
                 
                 users.forEach(user => {
-                    if (user.mobile === this.currentUser.mobile) return; // Skip self
+                    if (user.mobile === this.currentUser.mobile) return;
 
                     const rel = this.relationships[user.mobile] || { status: 'none' };
                     let show = false;
                     let actionHtml = "";
 
-                    // Tab Logic
                     if (this.currentTab === 'suggestions') {
-                        // Show if no relationship or not friend
                         if (rel.status !== 'friend' && rel.status !== 'incoming_request' && rel.status !== 'following') show = true;
                         actionHtml = `<button class="btn btn-primary" onclick="app.followUser('${user.mobile}')">Follow</button>`;
                     } else if (this.currentTab === 'friends') {
@@ -288,15 +284,12 @@
                         actionHtml = `<button class="btn btn-green" onclick="app.acceptRequest('${user.mobile}')">Follow Back</button>`;
                     }
 
-                    // Search Logic
                     if (filter && (!user.name.toLowerCase().includes(filter) && !user.mobile.includes(filter))) {
                         show = false;
                     }
                     
-                    // Search Override: If searching, show everyone relevant regardless of tab (except blocked logic if added later)
                     if (filter) {
                         show = true;
-                        // Adjust button based on actual status
                         if (rel.status === 'friend') actionHtml = `<button class="btn btn-primary" onclick="app.openChat('${user.mobile}')">Chat</button>`;
                         else if (rel.status === 'following') actionHtml = `<button class="btn btn-outline" disabled>Requested</button>`;
                         else if (rel.status === 'incoming_request') actionHtml = `<button class="btn btn-green" onclick="app.acceptRequest('${user.mobile}')">Accept</button>`;
@@ -318,16 +311,12 @@
                 });
             }
 
-            // --- Relationship Actions ---
             followUser(targetMobile) {
-                // Set My status -> Following
                 db.ref(`relationships/${this.currentUser.mobile}/${targetMobile}`).set({ status: 'following' });
-                // Set Target status -> Incoming Request
                 db.ref(`relationships/${targetMobile}/${this.currentUser.mobile}`).set({ status: 'incoming_request' });
             }
 
             acceptRequest(targetMobile) {
-                // Set Both -> Friend
                 db.ref(`relationships/${this.currentUser.mobile}/${targetMobile}`).set({ status: 'friend' });
                 db.ref(`relationships/${targetMobile}/${this.currentUser.mobile}`).set({ status: 'friend' });
             }
@@ -335,7 +324,6 @@
             // --- Chat Logic ---
             openChat(partnerMobile) {
                 this.activeChatPartner = this.allUsers[partnerMobile];
-                // Chat ID: Sort mobiles to ensure both users generate same ID
                 const ids = [this.currentUser.mobile, partnerMobile].sort();
                 this.activeChatId = ids[0] + "_" + ids[1];
 
@@ -343,28 +331,23 @@
                 document.getElementById('messages-container').innerHTML = "";
                 
                 this.showScreen('chat-screen');
-                
-                // Cleanup old messages (> 24 hours)
                 this.cleanupChatHistory();
                 
-                // Listen for messages
-                db.ref(`chats/${this.activeChatId}`).off(); // Remove old listeners
+                db.ref(`chats/${this.activeChatId}`).off();
                 db.ref(`chats/${this.activeChatId}`).orderByChild('timestamp').limitToLast(50).on('child_added', snapshot => {
                     const msg = snapshot.val();
                     if(msg.type === 'text') {
                         this.appendMessage(msg);
-                    } else if (msg.type === 'offer' || msg.type === 'answer' || msg.type === 'candidate') {
+                    } else if (['offer', 'answer', 'candidate'].includes(msg.type)) {
                         this.handleSignalMessage(msg);
                     }
                 });
             }
 
             cleanupChatHistory() {
-                const cutoff = Date.now() - (24 * 60 * 60 * 1000); // 24 Hours
+                const cutoff = Date.now() - (24 * 60 * 60 * 1000);
                 db.ref(`chats/${this.activeChatId}`).orderByChild('timestamp').endAt(cutoff).once('value', snapshot => {
-                    snapshot.forEach(child => {
-                        child.ref.remove();
-                    });
+                    snapshot.forEach(child => child.ref.remove());
                 });
             }
 
@@ -401,11 +384,11 @@
                 }
                 this.activeChatId = null;
                 this.activeChatPartner = null;
-                this.endCall(); // Ensure call ends if leaving chat
+                this.endCall();
                 this.showScreen('home-screen');
             }
 
-            // --- WebRTC Video/Audio Call ---
+            // --- WebRTC Logic ---
             async startCall(type) {
                 document.getElementById('call-modal').classList.remove('hidden');
                 document.getElementById('call-status').innerText = `Calling ${this.activeChatPartner.name}...`;
@@ -439,7 +422,6 @@
             }
 
             sendSignal(type, data) {
-                // Send signal as a specialized message type
                 db.ref(`chats/${this.activeChatId}`).push({
                     sender: this.currentUser.mobile,
                     type: type,
@@ -449,14 +431,12 @@
             }
 
             async handleSignalMessage(msg) {
-                if (msg.sender === this.currentUser.mobile) return; // Ignore own signals
-
+                if (msg.sender === this.currentUser.mobile) return;
                 const data = JSON.parse(msg.data);
 
                 if (msg.type === 'offer') {
-                    // Incoming Call
                     const accept = confirm(`Incoming call from ${this.activeChatPartner.name}. Answer?`);
-                    if (!accept) return; // In a real app we'd send a reject signal
+                    if (!accept) return;
 
                     document.getElementById('call-modal').classList.remove('hidden');
                     document.getElementById('call-status').innerText = "Connected";
@@ -471,8 +451,6 @@
                         document.getElementById('remote-video').srcObject = event.streams[0];
                     };
 
-                    // Auto-detect video vs audio based on offer? 
-                    // Simplified: Always try to get video/audio for answer, or just audio if video fails
                     try {
                         this.localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                     } catch {
@@ -487,16 +465,12 @@
                     await this.peerConnection.setLocalDescription(answer);
                     this.sendSignal('answer', answer);
                 } 
-                else if (msg.type === 'answer') {
-                    if(this.peerConnection) {
-                        document.getElementById('call-status').innerText = "Connected";
-                        await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
-                    }
+                else if (msg.type === 'answer' && this.peerConnection) {
+                    document.getElementById('call-status').innerText = "Connected";
+                    await this.peerConnection.setRemoteDescription(new RTCSessionDescription(data));
                 } 
-                else if (msg.type === 'candidate') {
-                    if(this.peerConnection) {
-                        await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
-                    }
+                else if (msg.type === 'candidate' && this.peerConnection) {
+                    await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
                 }
             }
 
@@ -521,7 +495,6 @@
         }
 
         const app = new ChatApp();
-
     </script>
 </body>
-</html>
+    </html>
