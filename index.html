@@ -113,13 +113,7 @@
             <button class="btn btn-red" style="padding: 5px 10px; font-size: 12px;" onclick="app.logout()">Logout</button>
         </div>
         <div class="tabs">
-            <button class="tab-btn active" onclick="app.switchTab('suggestions')">Suggestions</button>
-            <button class="tab-btn" onclick="app.switchTab('friends')">Friends</button>
-            <button class="tab-btn" onclick="app.switchTab('requests')">Requests</button>
-        </div>
-        <div id="user-list"></div>
-    </div>
- <script>
+            <script>
   atOptions = {
     'key' : '29d4803adc68bdb2f873243972de6441',
     'format' : 'iframe',
@@ -129,6 +123,12 @@
   };
 </script>
 <script src="https://www.highperformanceformat.com/29d4803adc68bdb2f873243972de6441/invoke.js"></script>
+            <button class="tab-btn active" onclick="app.switchTab('suggestions')">Suggestions</button>
+            <button class="tab-btn" onclick="app.switchTab('friends')">Friends</button>
+            <button class="tab-btn" onclick="app.switchTab('requests')">Requests</button>
+        </div>
+        <div id="user-list"></div>
+    </div>
 
     <!-- CHAT SCREEN -->
     <div id="chat-screen" class="screen hidden">
