@@ -106,12 +106,7 @@
     </div>
 
     <!-- HOME SCREEN -->
-    <div id="home-screen" class="screen hidden">
-        <div class="top-bar">
-            <input type="text" id="search-input" placeholder="Search..." onkeyup="app.handleSearch()">
-            <!-- LOGOUT BUTTON ADDED -->
-            <button class="btn btn-red" style="padding: 5px 10px; font-size: 12px;" onclick="app.logout()">Logout</button>
-            <script>
+    <script>
   atOptions = {
     'key' : '29d4803adc68bdb2f873243972de6441',
     'format' : 'iframe',
@@ -121,6 +116,11 @@
   };
 </script>
 <script src="https://www.highperformanceformat.com/29d4803adc68bdb2f873243972de6441/invoke.js"></script>
+    <div id="home-screen" class="screen hidden">
+        <div class="top-bar">
+            <input type="text" id="search-input" placeholder="Search..." onkeyup="app.handleSearch()">
+            <!-- LOGOUT BUTTON ADDED -->
+            <button class="btn btn-red" style="padding: 5px 10px; font-size: 12px;" onclick="app.logout()">Logout</button>
         </div>
         <div class="tabs">
             <button class="tab-btn active" onclick="app.switchTab('suggestions')">Suggestions</button>
